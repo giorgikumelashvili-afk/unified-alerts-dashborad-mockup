@@ -26,7 +26,14 @@ interface Props {
 }
 
 /** Multi-choice dropdown (shadcn-style, not a native <select multiple>). */
-export function MultiSelect({ options, selected, onChange, label, placeholder = "Select", className }: Props) {
+export function MultiSelect({
+  options,
+  selected,
+  onChange,
+  label,
+  placeholder = "Select",
+  className,
+}: Props) {
   const toggle = (value: string) => {
     onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
   };
@@ -37,7 +44,10 @@ export function MultiSelect({ options, selected, onChange, label, placeholder = 
       : selected.length === options.length
         ? "All"
         : selected.length <= 2
-          ? options.filter((o) => selected.includes(o.value)).map((o) => o.label).join(", ")
+          ? options
+              .filter((o) => selected.includes(o.value))
+              .map((o) => o.label)
+              .join(", ")
           : `${selected.length} selected`;
 
   return (

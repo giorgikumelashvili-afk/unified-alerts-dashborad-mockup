@@ -1,100 +1,89 @@
-# Alerts Dashboard — Risk List (MVP / DEVOPS-17921)
+# Alerts Dashboard — Risk List (DEVOPS-17921)
 
-> What could bite the real build. Numbers below are **rough order-of-magnitude
-> estimates for sizing**, to be confirmed against live API docs/quotas during
-> story breakdown — not verified figures.
+> Numbers below are rough order-of-magnitude estimates for sizing, to be confirmed
+> against live API docs/quotas during the build — not verified figures. Updated for
+> the MVP decisions: manual ingestion trigger, real-time metric calculation, no
+> cache, Coralogix-only telemetry, and dedup/discovery deferred.
 
 ## 1. Per-platform API rate limits
 
-Ingestion is read-only polling, but backfill (≥2 PIs / 12 weeks) is bursty. Each
-collector must own its rate-limiting + resumability so an interrupted backfill
-resumes without duplicates (RAW upserts are idempotent on `(platform, source_id,
-event_ts)`).
+Ingestion is read-only polling, but a 12-week backfill is bursty. Each collector
+owns its own rate-limiting and resumability via **Polly** (honor 429 / `Retry-After`,
+back off on 5xx). Raw upserts are idempotent on `(platform, source_id, event_ts)`,
+so a re-run never double-counts.
 
 | Platform | Rate-limit risk | Mitigation |
 |---|---|---|
-| **Datadog** | Per-endpoint quotas; monitor-search + events can be chatty | Page with cursors, respect `X-RateLimit-*` headers, hourly cadence |
-| **Opsgenie** | Per-integration throttling on the Alerts API + activity log | Backoff on 429, batch by time window |
-| **Coralogix** | Query/API quotas vary by plan | Window queries, reuse existing AlertProxy auth patterns |
-| **Pingdom** | Lower ceilings; smaller account | Few checks → low volume, daily is fine |
-| **Prometheus/Alertmanager** | Firing *history* often not retained | Mirror via Coralogix if needed (see below) |
+| Datadog | Per-endpoint quotas; monitor-search + events can be chatty | Page with cursors, respect rate-limit headers |
+| Opsgenie | Per-integration throttling on Alerts API + activity log | Backoff on 429, batch by time window |
+| Coralogix | Query/API quotas vary by plan | Window queries |
+| Pingdom | Lower ceilings, small account | Few checks, low volume |
+| Prometheus/Alertmanager | Firing history often not retained | Source from Coralogix mirror |
 
-## 2. API retention vs the 12-week backfill requirement
-
-The epic requires backfill reaching **≥ 2 PIs (12 weeks)**. The hard risk: some
-platforms don't retain event history that far.
+## 2. API retention vs the 12-week backfill
 
 | Platform | Retention risk | Note |
 |---|---|---|
-| **Prometheus/Alertmanager** | **Highest** — firing history typically short-lived / not durable | Plan to source Prom firing history from the **Coralogix mirror**, not Prom itself |
-| **Datadog** | Monitor state-change event history window may be < 12 weeks on plan | Confirm event retention; may cap backfill depth |
-| **Coralogix** | Alert-event retention tied to plan tier | Verify the mirror covers Prom-origin alerts for the full window |
-| **Pingdom** | Incident history generally adequate | Lower risk |
-| **Opsgenie** | Alert + activity-log retention usually sufficient for 12wk | Confirm activity-log window for MTTA |
+| Prometheus/Alertmanager | Highest — firing history short-lived | Source Prom firing history from the Coralogix mirror |
+| Datadog | Event history window may be < 12 weeks on plan | Confirm; may cap backfill depth |
+| Coralogix | Alert-event retention tied to plan tier | Verify the mirror covers the full window |
+| Pingdom | Incident history generally adequate | Lower risk |
+| Opsgenie | Alert + activity-log retention usually sufficient | Confirm activity-log window for MTTA |
 
-**Consequence:** backfill depth is "best-effort subject to each platform's
-retention" (per epic). Surface actual reachable depth per platform in the UI so
-gaps aren't mistaken for "zero alerts".
+Reachable backfill depth is best-effort per platform. Surface it in the UI so gaps
+are not mistaken for "zero alerts".
 
-## 3. Deduplication of mirrored alerts
+## 3. Real-time metric calculation (MVP decision)
 
-Dedup has **two cases** (see [architecture.md §4](architecture.md)) and the risk is
-conflating them:
+There is no precomputed aggregate table — every read recomputes metrics from raw
+rows. **Risk:** queries slow down as raw data grows, especially wide date ranges
+across all teams. **Mitigation:** index `firing_event` on `(team, fired_at, priority)`
+and `ack_event` on `(opsgenie_alert_id, created_at)`; cap default ranges; if it
+becomes hot, add a materialized aggregate later (the raw retention makes that a
+non-breaking change).
 
-- **Per-platform dedup** — within one platform, collapse repeats by
-  `(platform, source_id, fire_window)`.
-- **Detection → Opsgenie mirror** — a Datadog/Coralogix alert mirrored into
-  Opsgenie is the *same firing*: count once for `P1-Fired-Total`, set
-  `reached_opsgenie = true`.
-- **Cross-detection — keep both** — if Datadog **and** Coralogix each independently
-  detect a similar condition, store **both**; they're separate definitions. We do
-  **not** cross-dedup detection platforms.
+## 4. Manual ingestion trigger (MVP decision)
 
-**Risk:** the `dedupe_key` must be scoped to the *detection platform* so it never
-merges Datadog with Coralogix, while still collapsing the Opsgenie mirror via a
-`mirror_of` link. Alert identity differs across platforms (Opsgenie alias vs Datadog
-monitor id) — getting the mirror pairing wrong skews the headline metric and the
-routing-compliance ratio. Needs explicit per-platform id-mapping rules and a test
-corpus.
+Ingestion runs only when the REST endpoint is called — there is no scheduler.
+**Risk:** data freshness depends on someone (or an external cron) calling it; stale
+data is easy to ship unnoticed. **Mitigation:** record last-ingest timestamps and
+show them in the UI; add a scheduled trigger (cron / SchedulerService) post-MVP.
 
-## 4. MTTA business-hours ambiguity
+## 5. Deferred deduplication
 
-`P1-MTTA` default is all wall-clock hours; a business-hours-only variant is
-schema-ready (`mtta_business_seconds`) but the **business-hours definition is
-undecided** (per-team timezones? follow-the-sun? holidays?). Risk of comparing
-teams on inconsistent clocks. Keep all-wall-clock as the v1 surfaced metric;
-treat business-hours as a later, explicitly-specified variant.
+Dedup is not implemented yet. **Risk:** an alert mirrored Datadog/Coralogix ->
+Opsgenie can be counted more than once in Fired-Total, and the routing-compliance
+ratio can be skewed. **Mitigation:** document it as a known limitation for v1; add
+dedup (per-platform plus detection-to-Opsgenie mirror) when the identity-mapping
+rules are defined.
 
-## 5. Discovery / orphan risk
+## 6. Deferred discovery / normalization
 
-Team attribution + priority are discovered from platform metadata, which is
-**inconsistent by design** (that's why the epic exists). Risk: high orphan / many
-`Unknown` priorities at launch make early numbers look sparse. Mitigation: orphan
-+ unknown-priority counts are first-class UI (not dropped), and the normalization
-map is editable without redeploy so SRE iterates without code changes.
+Team attribution and priority are taken from each platform as-is, without a
+normalization map. **Risk:** the same team labeled differently across platforms
+fragments its numbers, and undiscoverable team/priority values are not yet
+surfaced as orphans. **Mitigation:** treat as a known v1 gap; add the normalization
+layer and an orphan view next.
 
-## 6. Rough daily event volume (sizing estimate)
+## 7. MTTA definition
 
-Ballpark to size storage/ingestion — **confirm against real data**:
+MTTA is wall-clock only for the MVP (`acknowledged_at - created_at`). A
+business-hours variant and per-team timezones are out of scope until requirements
+are pinned down.
 
-- Alert **definitions**: hundreds–low thousands total across platforms; pulled
-  **daily**, so ~10²–10³ rows/day churn. Negligible.
-- Alert **firings**: the variable cost. Estimate ~**1k–10k firing events/day**
-  org-wide across all priorities (P1 is a small fraction). Pulled hourly.
-- **Ack** events: bounded by Opsgenie alert volume, ~same order as firings that
-  reach Opsgenie.
+## 8. Rough daily event volume (sizing estimate)
 
-→ RAW growth ≈ low-millions of rows per year — comfortably within **PostgreSQL**.
-The 12-week raw-retention window keeps the hot set small;
-older raw can be archived since aggregates are already computed. **Risk is low**;
-the real driver to confirm is peak firing burst rate (incident storms), which
-stresses ingestion rate-limiting more than storage.
+- Definitions: hundreds to low thousands total, pulled on demand — negligible churn.
+- Firings: the variable cost — estimate ~1k-10k events/day org-wide (P1 a small
+  fraction).
+- Acks: bounded by Opsgenie alert volume.
 
-## 7. Secondary risks
+RAW growth is roughly low-millions of rows per year — comfortably within PostgreSQL.
+Peak firing burst rate (incident storms) stresses ingestion rate-limiting more than
+storage.
 
-- **Auth/secret sprawl** — five platform credentials. Mitigate via AWS Secrets
-  Manager + External Secrets (`Tipalti__Secret__*`), no secrets in repo.
-- **Recompute correctness** — aggregates must exactly match the UI/CSV for a PI
-  (success criterion #2). Needs a golden-dataset test.
-- **PI-boundary edges** — firings near a PI start/end must land in exactly one PI;
-  the configurable calendar must be the single source of truth for bucketing.
+## 9. Single telemetry backend
+
+Telemetry and logs go only to Coralogix. **Risk:** if Coralogix ingestion is down,
+the dashboard is blind to its own ingestion failures. **Mitigation:** keep local
+`Microsoft.Extensions.Logging` output (stdout) as a fallback visible in pod logs.

@@ -1,28 +1,18 @@
 // Types mirror the data-model sketch in docs/architecture.md.
 // MOCKUP ONLY — these back fake data, not a real API.
 
-export type Platform =
-  | "datadog"
-  | "prometheus"
-  | "coralogix"
-  | "pingdom"
-  | "opsgenie";
+export type Platform = "datadog" | "prometheus" | "coralogix" | "pingdom" | "opsgenie";
 
 export type Priority = "P1" | "P2" | "P3" | "P4" | "P5" | "Unknown";
 
-/** The five metrics surfaced per (team, PI). Default scope = P1 (epic v1). */
-export type MetricKey =
-  | "defined"
-  | "firedTotal"
-  | "firedOpsgenie"
-  | "acked"
-  | "mttaMinutes";
+/** Metrics surfaced per team. Default scope = P1 (epic v1). */
+export type MetricKey = "defined" | "firedTotal" | "firedOpsgenie" | "acked" | "mttaMinutes";
 
 export interface MetricMeta {
   key: MetricKey;
   label: string;
   hint: string;
-  /** Lower is better (e.g. MTTA) → affects trend coloring. */
+  /** Lower is better (e.g. MTTA) -> affects trend coloring. */
   lowerIsBetter?: boolean;
   unit?: string;
 }
@@ -33,21 +23,24 @@ export interface ProgramIncrement {
   startDate: string; // ISO date — 6-week windows
 }
 
-/** One (team, PI) computed aggregate row → team_pi_metric. */
-export interface TeamPiMetrics {
-  team: string;
-  piId: string;
-  defined: number;
+/** An inclusive from/to selection driven by the range calendar. */
+export interface DateRange {
+  from: Date;
+  to: Date;
+}
+
+/** A point in a weekly time series. */
+export interface WeeklyPoint {
+  weekStartIso: string;
+  label: string; // dd-mm
   firedTotal: number;
   firedOpsgenie: number;
   acked: number;
   mttaMinutes: number;
 }
 
-export type Granularity = "weekly" | "daily";
-
-/** A raw firing/definition row for chart drill-down. */
-export interface DrillDownAlert {
+/** A raw firing row for the per-team firings table. */
+export interface FiringRow {
   sourceId: string;
   platform: Platform;
   name: string;
@@ -58,38 +51,13 @@ export interface DrillDownAlert {
   sourceUrl: string; // dead "#" link in the mockup
 }
 
-/** Alert whose team or priority could not be discovered → orphan view. */
-export interface OrphanAlert {
+/** A defined alert (alert_definition) for the Defined alerts view. */
+export interface DefinedAlert {
   sourceId: string;
   platform: Platform;
+  team: string;
   name: string;
-  rawTeamLabel: string | null;
   priority: Priority;
-  reason: "unmapped-team" | "unknown-priority" | "both";
-  firedAt: string;
+  createdAt: string; // ISO — matches alert_definition.created_at
   sourceUrl: string;
-}
-
-/** FR-1 + observability: per-platform ingestion health. */
-export interface DataSourceStatus {
-  platform: Platform;
-  displayName: string;
-  reads: string; // what the collector reads
-  status: "healthy" | "degraded" | "down";
-  lastSyncIso: string;
-  errorRatePct: number;
-  definitions: number;
-  firings24h: number;
-}
-
-/** FR-6: a scheduled ingestion / backfill run. */
-export interface IngestionJob {
-  id: string;
-  kind: "firings" | "acks" | "definitions" | "backfill";
-  platform: Platform | "all";
-  startedAt: string;
-  durationSec: number;
-  status: "success" | "failed" | "running";
-  records: number;
-  note?: string;
 }

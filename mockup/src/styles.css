@@ -29,11 +29,11 @@
     --ring: 221 83% 53%;
     --radius: 0.6rem;
 
-    /* sidebar — deep navy gradient, always-dark for contrast */
-    --sidebar: 222 47% 11%;
-    --sidebar-foreground: 210 40% 96%;
+    /* sidebar — light gray to sit beside the white content in light mode */
+    --sidebar: 215 25% 94%;
+    --sidebar-foreground: 222 30% 20%;
     --sidebar-accent: 221 83% 53%;
-    --sidebar-border: 217 33% 20%;
+    --sidebar-border: 214 20% 85%;
   }
 
   .dark {

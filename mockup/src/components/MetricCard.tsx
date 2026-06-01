@@ -23,9 +23,16 @@ export default function MetricCard({ meta, value, prev }: Props) {
         {meta.unit && <span className="text-sm text-muted-foreground">{meta.unit}</span>}
       </div>
       {hasDelta && (
-        <div className={cn("mt-1 flex items-center gap-0.5 text-xs font-semibold", improving ? "text-success" : "text-destructive")}>
+        <div
+          className={cn(
+            "mt-1 flex items-center gap-0.5 text-xs font-semibold",
+            improving ? "text-success" : "text-destructive",
+          )}
+        >
           {rising ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-          {Math.abs(diff)}{meta.unit ? ` ${meta.unit}` : ""} <span className="font-normal text-muted-foreground">vs prev PI</span>
+          {Math.abs(diff)}
+          {meta.unit ? ` ${meta.unit}` : ""}{" "}
+          <span className="font-normal text-muted-foreground">vs prev PI</span>
         </div>
       )}
       <div className="mt-2 text-[11px] leading-snug text-muted-foreground">{meta.hint}</div>

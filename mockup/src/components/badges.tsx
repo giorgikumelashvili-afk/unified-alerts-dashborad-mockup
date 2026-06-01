@@ -2,7 +2,11 @@ import { Badge } from "@/components/ui/badge";
 import type { Priority } from "@/types";
 
 export function PlatformBadge({ platform }: { platform: string }) {
-  return <Badge variant="secondary" className="font-normal capitalize">{platform}</Badge>;
+  return (
+    <Badge variant="secondary" className="font-normal capitalize">
+      {platform}
+    </Badge>
+  );
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
