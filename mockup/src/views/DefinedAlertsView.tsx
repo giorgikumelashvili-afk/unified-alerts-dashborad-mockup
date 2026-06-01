@@ -59,21 +59,33 @@ export default function DefinedAlertsView() {
     [team],
   );
 
-  const filename = `defined-alerts_${team}_${formatDate(new Date())}.csv`;
-  const exportCsv = () => {
-    const csv = toCsv(
-      ["source_id", "platform", "team", "name", "priority", "created_at"],
-      rows.map((d) => [d.sourceId, d.platform, d.team, d.name, d.priority, d.createdAt.slice(0, 10)]),
+  const today = formatDate(new Date());
+  const seriesFile = `defined-alerts_${team}_series_${today}.csv`;
+  const listFile = `defined-alerts_${team}_${today}.csv`;
+
+  const exportSeries = () =>
+    downloadCsv(
+      seriesFile,
+      toCsv(
+        ["week_start", "defined_count"],
+        chartData.map((p) => [p.weekStartIso.slice(0, 10), p.count]),
+      ),
     );
-    downloadCsv(filename, csv);
-  };
+
+  const exportList = () =>
+    downloadCsv(
+      listFile,
+      toCsv(
+        ["source_id", "platform", "team", "name", "priority", "created_at"],
+        rows.map((d) => [d.sourceId, d.platform, d.team, d.name, d.priority, d.createdAt.slice(0, 10)]),
+      ),
+    );
 
   return (
     <div>
       <PageHeader
         title="Defined alerts"
         description="Which alert definitions exist and how that count has grown over time."
-        actions={<ExportButton filename={filename} onConfirm={exportCsv} />}
       />
 
       <div className="mb-5 flex flex-wrap items-end gap-4">
@@ -101,10 +113,15 @@ export default function DefinedAlertsView() {
 
       <Card className="mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Defined alerts over time</CardTitle>
-          <CardDescription>
-            Count of alert definitions that exist at each week across the range.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Defined alerts over time</CardTitle>
+              <CardDescription>
+                Count of alert definitions that exist at each week across the range.
+              </CardDescription>
+            </div>
+            <ExportButton filename={seriesFile} onConfirm={exportSeries} />
+          </div>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
@@ -128,13 +145,18 @@ export default function DefinedAlertsView() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Definitions ({rows.length})</CardTitle>
-          <CardDescription>
-            Each definition links back to the source platform. Drag column edges to resize.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Definitions ({rows.length})</CardTitle>
+              <CardDescription>
+                Each definition links back to the source platform. Drag column edges to resize.
+              </CardDescription>
+            </div>
+            <ExportButton filename={listFile} onConfirm={exportList} />
+          </div>
         </CardHeader>
         <CardContent>
-          <DataTable columns={definedColumns} rows={rows} rowKey={(d) => d.sourceId} />
+          <DataTable columns={definedColumns} rows={rows} rowKey={(d) => d.sourceId} maxHeight={440} />
         </CardContent>
       </Card>
     </div>

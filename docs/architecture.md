@@ -55,21 +55,24 @@ Ingestion is triggered manually via a REST endpoint for the MVP (no scheduler).
 sequenceDiagram
     participant User as Operator / REST call
     participant Ing as IngestController
-    participant Col as DatadogCollector
-    participant DD as Datadog API
+    participant Col as Collector (per platform)
+    participant Ext as Platform API
     participant Store as PostgreSQL
-    User->>Ing: POST /ingest?platform=datadog&from=..&to=..
-    Ing->>Col: run(window)
-    Col->>DD: GET monitors + state-change events
-    DD-->>Col: monitors[], events[]
-    Note over Col,DD: Polly wraps the call (retry/backoff, honor 429)
-    Col-->>Store: upsert raw (idempotent on platform + source_id + ts)
+    User->>Ing: POST /ingest?platform=all&from=..&to=..
+    loop Datadog, Prometheus, Coralogix, Pingdom, Opsgenie
+        Ing->>Col: run(window)
+        Col->>Ext: GET definitions / firings / acks
+        Ext-->>Col: payloads
+        Note over Col,Ext: Polly wraps the call (retry/backoff, honor 429)
+        Col-->>Store: upsert raw (idempotent on platform + source_id + ts)
+    end
     Ing-->>User: summary (records ingested)
 ```
 
-Idempotency: raw upserts key on `(platform, source_id, event_ts)` so a re-run
-never double-counts. Metrics are computed on read, so there is no aggregate to
-rebuild.
+Ingestion fans out to **all five collectors** by default (`platform=all`); pass a
+single platform to ingest just one. Idempotency: raw upserts key on
+`(platform, source_id, event_ts)` so a re-run never double-counts. Metrics are
+computed on read, so there is no aggregate to rebuild.
 
 ## 4. Data model
 

@@ -1,4 +1,4 @@
-# Alerts Dashboard — Backend Implementation Guide (personal notes)
+# Alerts Dashboard — Backend Deep Dive (personal notes)
 
 Practical gist of what the backend needs: stack, data model, our REST endpoints
 (with request/response shapes and behavior), the third-party APIs each collector
@@ -55,43 +55,46 @@ fly).
 
 ## 3. Data model (PostgreSQL)
 
-Three raw tables. No aggregate table.
+Three raw tables. No aggregate table. Every table uses a **UUID** primary key
+(`gen_random_uuid()` needs the `pgcrypto` extension). Every column is commented.
 
 ```sql
+create extension if not exists pgcrypto;
+
 create table alert_definition (
-  id              bigserial primary key,
-  platform        text not null,            -- datadog|prometheus|coralogix|pingdom|opsgenie
-  source_id       text not null,            -- platform's monitor/alert/check id
-  source_url      text not null,
-  team            text not null,
-  priority        text not null,            -- P1..P5 | Unknown
-  created_at      timestamptz not null,     -- when created on the platform
-  captured_at     timestamptz not null,     -- when we read it
-  unique (platform, source_id)
+  id              uuid primary key default gen_random_uuid(), -- surrogate row id (UUID)
+  platform        text not null,        -- source platform: datadog|prometheus|coralogix|pingdom|opsgenie
+  source_id       text not null,        -- the platform's own id for the monitor/alert/check
+  source_url      text not null,        -- deep link back to the definition on the platform
+  team            text not null,        -- owning team as captured from the platform
+  priority        text not null,        -- discovered priority: P1..P5 | Unknown
+  created_at      timestamptz not null, -- when the definition was created on the platform
+  captured_at     timestamptz not null, -- when our collector read it
+  unique (platform, source_id)          -- one row per definition per platform
 );
 
 create table firing_event (
-  id                  bigserial primary key,
-  platform            text not null,
-  source_id           text not null,        -- platform's event id
-  source_url          text not null,
-  alert_def_source_id text,                 -- links to alert_definition.source_id
-  team                text not null,
-  priority            text not null,
-  fired_at            timestamptz not null,
-  reached_opsgenie    boolean not null default false,
-  unique (platform, source_id, fired_at)    -- idempotent upsert key
+  id                  uuid primary key default gen_random_uuid(), -- surrogate row id (UUID)
+  platform            text not null,        -- detection platform that fired the alert
+  source_id           text not null,        -- the platform's id for this firing/event
+  source_url          text not null,        -- deep link back to the firing on the platform
+  alert_def_source_id text,                 -- which definition fired (alert_definition.source_id), nullable
+  team                text not null,        -- owning team at fire time (denormalized for fast reads)
+  priority            text not null,        -- priority at fire time: P1..P5 | Unknown
+  fired_at            timestamptz not null, -- event timestamp (used to bucket into the date range)
+  reached_opsgenie    boolean not null default false, -- did this firing reach Opsgenie (routing compliance)
+  unique (platform, source_id, fired_at)    -- idempotent upsert key (no double counting)
 );
 
 create table ack_event (
-  id                bigserial primary key,
-  opsgenie_alert_id text not null,
-  source_id         text not null,
-  source_url        text not null,
-  created_at        timestamptz not null,   -- Opsgenie createdAt
-  acknowledged_at   timestamptz,            -- null = auto-closed, no human ack
-  ack_by            text,
-  unique (opsgenie_alert_id)
+  id                uuid primary key default gen_random_uuid(), -- surrogate row id (UUID)
+  opsgenie_alert_id text not null,        -- the Opsgenie alert this ack lifecycle belongs to
+  source_id         text not null,        -- the platform's id for the ack/alert record
+  source_url        text not null,        -- deep link back to the Opsgenie alert
+  created_at        timestamptz not null, -- Opsgenie createdAt (start of the MTTA clock)
+  acknowledged_at   timestamptz,          -- first human ack (end of MTTA clock); null = auto-closed, no human ack
+  ack_by            text,                 -- responder who acked; null if none
+  unique (opsgenie_alert_id)              -- one ack lifecycle row per Opsgenie alert
 );
 
 -- indexes for the real-time read path
@@ -224,7 +227,7 @@ sequenceDiagram
     participant Ext as Platform API
     participant DB as PostgreSQL
     Op->>API: POST /api/ingest { platform, team, from, to }
-    loop each requested platform
+    loop Datadog, Prometheus, Coralogix, Pingdom, Opsgenie (all, or the one selected)
       API->>Col: run(window)
       Col->>Ext: GET definitions / firings / acks (Polly: retry, backoff, 429)
       Ext-->>Col: payloads
@@ -232,6 +235,10 @@ sequenceDiagram
     end
     API-->>Op: { runId, counts, status }
 ```
+
+You need **all five** collectors — the loop runs every platform when `platform=all`
+(the normal case), or a single one when a specific platform is passed. Section 6
+lists what each collector calls.
 
 ---
 

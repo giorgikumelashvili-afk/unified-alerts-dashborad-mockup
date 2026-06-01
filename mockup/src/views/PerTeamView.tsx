@@ -100,21 +100,51 @@ export default function PerTeamView() {
   }));
   const mttaData = series.map((p) => ({ week: p.label, Acknowledged: p.acked, "MTTA (min)": p.mttaMinutes }));
 
-  const filename = `per-team_${team}_${formatDate(new Date())}.csv`;
-  const exportCsv = () => {
-    const csv = toCsv(
-      ["week_start", "fired_total", "reached_opsgenie", "acked", "mtta_minutes"],
-      series.map((p) => [p.weekStartIso.slice(0, 10), p.firedTotal, p.firedOpsgenie, p.acked, p.mttaMinutes]),
+  const today = formatDate(new Date());
+  const firedFile = `per-team_${team}_firings-series_${today}.csv`;
+  const mttaFile = `per-team_${team}_mtta_${today}.csv`;
+  const firingsFile = `per-team_${team}_firings_${today}.csv`;
+
+  const exportFired = () =>
+    downloadCsv(
+      firedFile,
+      toCsv(
+        ["week_start", "fired_total", "reached_opsgenie", "acked"],
+        series.map((p) => [p.weekStartIso.slice(0, 10), p.firedTotal, p.firedOpsgenie, p.acked]),
+      ),
     );
-    downloadCsv(filename, csv);
-  };
+
+  const exportMtta = () =>
+    downloadCsv(
+      mttaFile,
+      toCsv(
+        ["week_start", "acked", "mtta_minutes"],
+        series.map((p) => [p.weekStartIso.slice(0, 10), p.acked, p.mttaMinutes]),
+      ),
+    );
+
+  const exportFirings = () =>
+    downloadCsv(
+      firingsFile,
+      toCsv(
+        ["source_id", "platform", "name", "priority", "fired_at", "reached_opsgenie", "acknowledged"],
+        rows.map((r) => [
+          r.sourceId,
+          r.platform,
+          r.name,
+          r.priority,
+          r.firedAt,
+          String(r.reachedOpsgenie),
+          String(r.acknowledged),
+        ]),
+      ),
+    );
 
   return (
     <div>
       <PageHeader
         title="Per-team"
         description="Firing and acknowledgement hygiene for a team over a selected date range."
-        actions={<ExportButton filename={filename} onConfirm={exportCsv} />}
       />
 
       <div className="mb-5 flex flex-wrap items-end gap-4">
@@ -157,8 +187,13 @@ export default function PerTeamView() {
 
       <Card className="mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Firings over time</CardTitle>
-          <CardDescription>Weekly buckets across the selected range.</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Firings over time</CardTitle>
+              <CardDescription>Weekly buckets across the selected range.</CardDescription>
+            </div>
+            <ExportButton filename={firedFile} onConfirm={exportFired} />
+          </div>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -185,11 +220,16 @@ export default function PerTeamView() {
 
       <Card className="mb-6">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">MTTA vs acknowledged alerts</CardTitle>
-          <CardDescription>
-            Mean time to acknowledge (line) against the volume of acked alerts (bars), so spikes can be read
-            in context.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">MTTA vs acknowledged alerts</CardTitle>
+              <CardDescription>
+                Mean time to acknowledge (line) against the volume of acked alerts (bars), so spikes can be
+                read in context.
+              </CardDescription>
+            </div>
+            <ExportButton filename={mttaFile} onConfirm={exportMtta} />
+          </div>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
@@ -216,11 +256,16 @@ export default function PerTeamView() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Firings</CardTitle>
-          <CardDescription>
-            Underlying firings in the range, each linking back to the source platform. Drag column edges to
-            resize.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-base">Firings</CardTitle>
+              <CardDescription>
+                Underlying firings in the range, each linking back to the source platform. Drag column edges
+                to resize.
+              </CardDescription>
+            </div>
+            <ExportButton filename={firingsFile} onConfirm={exportFirings} />
+          </div>
         </CardHeader>
         <CardContent>
           <DataTable columns={firingColumns} rows={rows} rowKey={(r) => r.sourceId} />

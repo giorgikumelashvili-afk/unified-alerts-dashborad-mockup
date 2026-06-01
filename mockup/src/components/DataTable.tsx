@@ -15,10 +15,12 @@ interface Props<T> {
   rows: T[];
   rowKey: (row: T) => string;
   className?: string;
+  /** fixed body height in px — scrolls vertically with a sticky header */
+  maxHeight?: number;
 }
 
-/** A table with drag-to-resize columns (fixed layout + per-column width state). */
-export function DataTable<T>({ columns, rows, rowKey, className }: Props<T>) {
+/** A table with drag-to-resize columns (fixed layout, fills width, sticky header). */
+export function DataTable<T>({ columns, rows, rowKey, className, maxHeight }: Props<T>) {
   const [widths, setWidths] = useState<number[]>(() => columns.map((c) => c.width ?? 160));
   const drag = useRef<{ index: number; startX: number; startWidth: number } | null>(null);
 
@@ -45,19 +47,28 @@ export function DataTable<T>({ columns, rows, rowKey, className }: Props<T>) {
   const total = widths.reduce((a, b) => a + b, 0);
 
   return (
-    <div className={cn("w-full overflow-x-auto rounded-lg border", className)}>
-      <table className="caption-bottom text-sm" style={{ width: total, tableLayout: "fixed" }}>
+    <div
+      className={cn("w-full overflow-auto rounded-lg border", className)}
+      style={maxHeight ? { maxHeight } : undefined}
+    >
+      <table
+        className="caption-bottom text-sm"
+        style={{ width: "100%", minWidth: total, tableLayout: "fixed" }}
+      >
         <colgroup>
           {widths.map((w, i) => (
             <col key={i} style={{ width: w }} />
           ))}
         </colgroup>
-        <thead className="[&_tr]:border-b">
-          <tr>
+        <thead>
+          <tr className="border-b">
             {columns.map((c, i) => (
               <th
                 key={c.key}
-                className="relative h-10 select-none px-3 text-left align-middle font-medium text-muted-foreground"
+                className={cn(
+                  "sticky top-0 z-10 h-10 select-none bg-card px-3 text-left align-middle font-medium text-muted-foreground",
+                  i < columns.length - 1 && "border-r border-border/50",
+                )}
               >
                 <span className="block truncate pr-2">{c.header}</span>
                 {i < columns.length - 1 && (
