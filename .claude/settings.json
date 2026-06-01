@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($ok=$false; for\\($i=0;$i -lt 10;$i++\\){ try { $r=Invoke-WebRequest -Uri \"http://localhost:4317/\" -UseBasicParsing -TimeoutSec 3; \"HTTP $\\($r.StatusCode\\) | root div: $\\($r.Content -match 'id=\"\"root\"\"'\\) | title MOCKUP: $\\($r.Content -match 'MOCKUP'\\)\"; $a=Invoke-WebRequest -Uri \"http://localhost:4317/assets/\" -UseBasicParsing -TimeoutSec 3 -ErrorAction SilentlyContinue; $ok=$true; break } catch { Start-Sleep -Milliseconds 700 } }; if\\(-not $ok\\){ \"server did not respond\" })"
+    ]
+  }
+}
