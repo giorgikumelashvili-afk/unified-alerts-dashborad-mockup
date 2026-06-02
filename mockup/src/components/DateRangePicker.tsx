@@ -1,7 +1,7 @@
 import { CalendarDays } from "lucide-react";
 import type { DateRange as RdpRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { DateRange } from "@/types";
 import { formatDate } from "@/lib/utils";

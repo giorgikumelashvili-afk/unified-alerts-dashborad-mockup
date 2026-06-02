@@ -107,10 +107,3 @@
 .recharts-cartesian-axis-tick-value {
   fill: hsl(var(--muted-foreground));
 }
-
-.rdp-caption_start .rdp-dropdown {
-  justify-content: end;
-}
-.rdp-caption_end .rdp-dropdown {
-  justify-content: start;
-}

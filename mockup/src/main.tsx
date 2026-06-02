@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
-import App from "./App";
 import { ThemeProvider } from "./components/theme-provider";
+
+import App from "./App";
 import PerTeamView from "./views/PerTeamView";
 import DefinedAlertsView from "./views/DefinedAlertsView";
 import ProfileView from "./views/ProfileView";
